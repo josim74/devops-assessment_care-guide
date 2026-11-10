@@ -1,0 +1,98 @@
+name: PR Checks & Security Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-quality-and-tests:
+    name: Code Linting, Tests & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements-dev.txt
+
+      - name: Run Ruff Linter
+        run: |
+          ruff check .
+
+      - name: Check Code Formatting
+        run: |
+          ruff format --check .
+
+      - name: Run Unit Tests with Coverage
+        run: |
+          pytest --cov=app/src --cov-report=term-missing --cov-report=xml
+
+      - name: Upload Test Coverage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+
+  dockerfile-and-script-lint:
+    name: Dockerfile & Shell Script Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile with Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: warning
+
+      - name: Lint Shell Scripts with ShellCheck
+        uses: koalaman/shellcheck-action@v2.0.0
+        with:
+          severity: warning
+          scandir: scripts k8s/scripts
+
+  security-vulnerability-scan:
+    name: Container Build & Trivy Security Gate
+    runs-on: ubuntu-latest
+    needs: [code-quality-and-tests, dockerfile-and-script-lint]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Image for Scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          load: true
+          tags: care-guide-service:pr-test
+
+      - name: Run Trivy Vulnerability Scanner (Fail on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: care-guide-service:pr-test
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL"

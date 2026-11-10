@@ -1,0 +1,12 @@
+[Unit]
+Description=Trigger System Health Monitoring Every 5 Minutes
+Requires=system_health.service
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/5
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

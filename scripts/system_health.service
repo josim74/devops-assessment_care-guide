@@ -1,0 +1,10 @@
+[Unit]
+Description=Linux System Health Monitoring Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/care-guide/scripts/system_health.sh --cpu 90 --mem 85 --disk 80 --json
+StandardOutput=journal
+StandardError=journal

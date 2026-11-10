@@ -1,0 +1,122 @@
+# ==============================================================================
+# Full Observability Stack: Prometheus, Grafana, Loki, Alloy, Node Exporter, cAdvisor
+# ==============================================================================
+services:
+  # 1. Grafana (Dashboard Visualization & Alerting UI)
+  # Only Grafana is exposed to the host system on port 3000.
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-AdminSecurePass2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards/definitions:/etc/grafana/provisioning/dashboards/definitions:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - internal-monitoring-net
+      - app-net
+    depends_on:
+      - prometheus
+      - loki
+
+  # 2. Prometheus (Metrics Time Series Database & Scraper)
+  # Retains metrics for 15 days explicitly. Internal communication only.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - internal-monitoring-net
+      - app-net
+
+  # 3. Loki (Log Aggregation & Retention Engine)
+  # Internal network only. Configured for 7 days (168h) retention.
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - internal-monitoring-net
+
+  # 4. Grafana Alloy (Docker Discovery, JSON Parsing & Log Forwarder)
+  # Reads container logs via docker socket, parses JSON stdout, ships to Loki.
+  alloy:
+    image: grafana/alloy:v1.2.1
+    container_name: alloy
+    restart: unless-stopped
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal-monitoring-net
+    depends_on:
+      - loki
+
+  # 5. Node Exporter (Host System Hardware & OS Metrics)
+  # Mounts host proc/sys in read-only mode to capture host performance.
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - internal-monitoring-net
+
+  # 6. cAdvisor (Container Resource Usage & Performance)
+  # Requires read-only access to docker cgroups and storage to inspect memory/CPU.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - internal-monitoring-net
+
+volumes:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+
+networks:
+  # Secure internal network for monitoring communication
+  internal-monitoring-net:
+    driver: bridge
+  # External app network to scrape the application
+  app-net:
+    external: true
+    name: care-guide-network

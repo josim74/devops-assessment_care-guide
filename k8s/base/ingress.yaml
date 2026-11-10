@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: care-guide-ingress
+  labels:
+    app.kubernetes.io/name: care-guide-service
+    app.kubernetes.io/part-of: devops-assessment
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: care-guide.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: care-guide-service
+                port:
+                  number: 80

@@ -1,0 +1,63 @@
+groups:
+  - name: devops_assessment_alerts
+    rules:
+      # 1. App Instance Down Alert
+      # Justification: If the application container stops reporting metrics for >1 minute,
+      # it indicates container crash, unhandled panic, OOM kill, or network partition.
+      - alert: AppInstanceDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application instance is down (instance {{ $labels.instance }})"
+          description: "App target has been unreachable for more than 1 minute."
+
+      # 2. High HTTP Error Rate Alert (> 5% error rate)
+      # Justification: A 5xx error rate sustained above 5% over 2 minutes violates typical
+      # SLO targets (99.9% availability) and indicates an active outage or failing dependency.
+      - alert: HighHttpErrorRate
+        expr: |
+          (
+            sum(rate(http_request_errors_total[2m]))
+            /
+            sum(rate(http_requests_total[2m]))
+          ) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate detected (> 5%)"
+          description: "HTTP error rate is {{ $value | printf \"%.2f\" }}% over the last 2 minutes."
+
+      # 3. Host Disk Usage Alert (> 80%)
+      # Justification: 80% disk threshold provides adequate lead time to rotate logs, clean
+      # docker images, or resize volumes before system instability occurs at 100%.
+      - alert: HostDiskUsageHigh
+        expr: |
+          (
+            1 - (node_filesystem_free_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
+          ) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host root filesystem disk usage above 80%"
+          description: "Disk usage on mountpoint / is at {{ $value | printf \"%.2f\" }}%."
+
+      # 4. Container Memory Close To Hard Limit (> 85%)
+      # Justification: Container memory above 85% of its configured cgroup limit for 3 minutes
+      # risks immediate OOM (Out-Of-Memory) kill by Linux kernel cgroups.
+      - alert: ContainerMemoryCloseToLimit
+        expr: |
+          (
+            container_memory_working_set_bytes{name=~".*care-guide.*"}
+            /
+            container_spec_memory_limit_bytes{name=~".*care-guide.*"}
+          ) * 100 > 85
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory close to configured limit (> 85%)"
+          description: "Container {{ $labels.name }} is using {{ $value | printf \"%.2f\" }}% of its memory limit."

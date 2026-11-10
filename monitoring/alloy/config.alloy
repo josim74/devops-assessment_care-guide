@@ -1,0 +1,67 @@
+// Grafana Alloy Configuration for Docker Service Discovery & JSON Log Shipping to Loki
+
+discovery.docker "docker_containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_relabel" {
+  targets = discovery.docker.docker_containers.targets
+
+  // Extract clean container name without leading slash
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // Set default app label based on container name
+  rule {
+    source_labels = ["container"]
+    target_label  = "app"
+  }
+}
+
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.docker_relabel.output
+  forward_to = [loki.process.parse_json_logs.receiver]
+}
+
+// Structured JSON log parsing and low-cardinality label extraction
+loki.process "parse_json_logs" {
+  // 1. Parse JSON formatted log lines
+  stage.json {
+    expressions = {
+      level       = "level",
+      message     = "message",
+      path        = "path",
+      status_code = "status_code",
+      duration_ms = "duration_ms",
+    }
+  }
+
+  // 2. Promote ONLY low-cardinality fields (level) to stream labels.
+  // HIGH-CARDINALITY RATIONALE:
+  // - 'level' has only 5 distinct values (DEBUG, INFO, WARNING, ERROR, CRITICAL) -> SAFE as label.
+  // - 'path', 'status_code', 'duration_ms' have unbounded or dynamic variations.
+  //   We preserve them as structured metadata / extracted JSON fields for querying
+  //   without causing Loki chunk index explosion or excessive memory usage.
+  stage.labels {
+    values = {
+      level = "level",
+    }
+  }
+
+  // 3. Set output log line message
+  stage.output {
+    source = "message"
+  }
+
+  forward_to = [loki.write.local_loki.receiver]
+}
+
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

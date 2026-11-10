@@ -1,0 +1,6 @@
+# ==============================================================================
+# Sample Crontab Entry for System Health Monitoring
+# Runs every 5 minutes and logs structured output to health_log.txt
+# ==============================================================================
+# Edit using: crontab -e
+*/5 * * * * /opt/care-guide/scripts/system_health.sh --cpu 90 --mem 85 --disk 80 --json >> /var/log/health_cron.log 2>&1
