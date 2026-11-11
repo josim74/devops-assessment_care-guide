@@ -62,10 +62,12 @@ jobs:
           failure-threshold: warning
 
       - name: Lint Shell Scripts with ShellCheck
-        uses: koalaman/shellcheck-action@v2.0.0
-        with:
-          severity: warning
-          scandir: scripts k8s/scripts
+        run: |
+          # Lint every shell script in the repo (ubuntu-latest ships shellcheck)
+          git ls-files '*.sh' | xargs shellcheck --severity=warning
+          # Also lint the deploy script embedded in the Terraform user-data template
+          sed 's/\$\$/$/g; s/\${[a-z_]*}/PLACEHOLDER/g' terraform/templates/user_data.sh.tpl > /tmp/user_data.sh
+          shellcheck --severity=warning /tmp/user_data.sh
 
   security-vulnerability-scan:
     name: Container Build & Trivy Security Gate
@@ -86,6 +88,7 @@ jobs:
           file: docker/Dockerfile
           load: true
           tags: care-guide-service:pr-test
+          cache-from: type=gha
 
       - name: Run Trivy Vulnerability Scanner (Fail on CRITICAL)
         uses: aquasecurity/trivy-action@0.24.0

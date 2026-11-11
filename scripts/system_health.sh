@@ -185,7 +185,9 @@ send_webhook_alert() {
   local webhook_url="${ALERT_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-${DISCORD_WEBHOOK_URL:-}}}"
   if [ -n "$webhook_url" ] && [ ${#WARNINGS[@]} -gt 0 ]; then
     local payload
-    local msg="⚠️ *System Health Alert* on \`$(hostname)\` at \`${TIMESTAMP}\`:\n"
+    local msg host
+    host="$(hostname)"
+    msg="⚠️ *System Health Alert* on \`${host}\` at \`${TIMESTAMP}\`:\n"
     for w in "${WARNINGS[@]}"; do
       msg="${msg}• ${w}\n"
     done

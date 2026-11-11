@@ -278,6 +278,20 @@ kubectl port-forward svc/care-guide-service 8080:80
 
 ### Demonstration: Zero-Downtime Rollout & Undo
 
+> **Registry note:** CI pushes `ghcr.io/<owner>/care-guide-service` tagged `sha-<short-sha>` and the
+> version from the `VERSION` file (no `latest`). The GHCR package must be set to **public**
+> (Package settings -> Change visibility) so the EC2 instance and clusters can pull without credentials.
+>
+> **Local (no registry) run with kind:**
+> ```bash
+> docker build -f docker/Dockerfile -t care-guide-service:1.0.0 --build-arg APP_VERSION=1.0.0 .
+> docker build -f docker/Dockerfile -t care-guide-service:1.1.0 --build-arg APP_VERSION=1.1.0 .
+> kind create cluster --name care-guide
+> kind load docker-image care-guide-service:1.0.0 care-guide-service:1.1.0 --name care-guide
+> kubectl apply -k k8s/base && kubectl set image deploy/care-guide-deployment app=care-guide-service:1.0.0
+> IMAGE_REPO=care-guide-service NEW_TAG=1.1.0 ./k8s/scripts/verify_rollout.sh
+> ```
+
 Execute the automated verification script:
 
 ```bash

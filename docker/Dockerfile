@@ -7,6 +7,9 @@ FROM python:3.12.4-alpine3.20 AS builder
 WORKDIR /build
 
 # Install build dependencies if needed for compiling packages
+# Builder stage is discarded; pinning alpine package revisions here is brittle (they are
+# removed from the mirror) and does not affect the shipped image.
+# hadolint ignore=DL3018
 RUN apk add --no-cache --virtual .build-deps \
     gcc \
     musl-dev \
@@ -15,7 +18,7 @@ RUN apk add --no-cache --virtual .build-deps \
 
 # Install dependencies into a wheels cache
 COPY app/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip==24.1.2 && \
     pip wheel --no-cache-dir --wheel-dir=/build/wheels -r requirements.txt
 
 # ------------------------------------------------------------------------------
@@ -23,10 +26,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ------------------------------------------------------------------------------
 FROM python:3.12.4-alpine3.20 AS runner
 
+ARG APP_VERSION=1.0.0
+
 # OpenContainer Initiative (OCI) metadata labels
 LABEL org.opencontainers.image.title="devops-assessment-service" \
       org.opencontainers.image.description="Production-ready FastAPI service with Prometheus metrics & JSON logging" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.vendor="DevOps Assessment" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/josim/devops-assessment_care-guide"
@@ -35,6 +40,7 @@ LABEL org.opencontainers.image.title="devops-assessment-service" \
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
+    APP_VERSION=${APP_VERSION} \
     PORT=8080 \
     LOG_LEVEL=INFO \
     ENVIRONMENT_NAME=production
