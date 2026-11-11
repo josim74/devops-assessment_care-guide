@@ -96,7 +96,7 @@ flowchart TD
         Alloy["Grafana Alloy Log Forwarder"]
     end
 
-    subgraph InternalNet["Internal Docker Network (monitoring_internal)"]
+    subgraph InternalNet["Internal Docker Network (internal-monitoring-net)"]
         Prom["Prometheus Server (:9090)"]
         Loki["Loki Storage Engine (:3100)"]
         
@@ -288,6 +288,18 @@ kubectl port-forward svc/care-guide-service 8080:80
 > version from the `VERSION` file (no `latest`). The GHCR package must be set to **public**
 > (Package settings -> Change visibility) so the EC2 instance and clusters can pull without credentials.
 >
+### CI/CD configuration (no secrets in the repo)
+
+| Name | Type | Used by | Purpose |
+|---|---|---|---|
+| `GITHUB_TOKEN` | automatic | release workflow | Push images to GHCR (`packages: write`). |
+| `AWS_ROLE_TO_ASSUME` | repo **secret** | deploy job | ARN of an IAM role trusted for GitHub OIDC (no static keys). It needs `ssm:SendCommand`/`ssm:GetCommandInvocation` on the target instance. |
+| `AWS_EC2_INSTANCE_ID` | repo **secret** | deploy job | Instance to deploy to (`terraform output instance_id`). |
+| `AWS_REGION` | repo **variable** | deploy job | Defaults to `us-east-1`. |
+| `CLOUDWATCH_LOG_GROUP` | repo **variable** | deploy job | Defaults to `/aws/ec2/production-care-guide-service`. |
+
+If the two AWS secrets are absent the deploy job logs a notice and skips - build, scan and push still run. The OIDC identity provider and the role itself are created once outside this repo's Terraform (documented as an improvement).
+
 > **Local (no registry) run with kind:**
 > ```bash
 > docker build -f docker/Dockerfile -t care-guide-service:1.0.0 --build-arg APP_VERSION=1.0.0 .
@@ -351,39 +363,73 @@ care-guide-deployment-94486596c-qwwrh    0/1     Terminating   0          5s
 
 ## 4. Observability Incident Triage Walkthrough
 
-### Scenario
 > **"An error spike appears on the Application dashboard. How do you find the cause using these tools?"**
 
-1. **Detection & Impact Assessment**:
-   - The on-call engineer receives a notification or observes the **Application Overview Dashboard** in Grafana.
-   - The **HTTP Error Rate (%)** panel spikes from $0\%$ to $15\%$, while **Request Latency (p95/p99)** jumps from $25\text{ ms}$ to $2.4\text{ s}$.
-   - The **HTTP Request Rate** panel indicates which specific endpoint is affected (e.g., `POST /orders` vs `GET /health`).
+The screenshots below are from a real local run: `./scripts/generate_traffic.sh --spike` sends 60 s of normal traffic followed by 60 s of requests to an unknown path (`/api/v1/does-not-exist`) mixed with valid ones.
 
-2. **Cross-Correlated Metric Inspection**:
-   - The engineer checks the **Host Infrastructure Dashboard**: Host CPU is at $18\%$, Disk is at $45\%$, and Network is normal $\rightarrow$ Confirms the host system is not saturated.
-   - The engineer checks the **Container Metrics Dashboard**: Memory is well within limits ($42\text{ MB} / 128\text{ MB}$ limit) and no OOM events have fired.
+### Dashboards (provisioned from `monitoring/grafana/dashboards/definitions/`)
 
-3. **Log Drilldown in the Same View**:
-   - Without leaving the Application dashboard, the engineer views the co-located **Application Correlated Logs (Loki)** panel below the metrics.
-   - The engineer enters the LogQL query:
-     ```logql
-     {container=~".*care-guide.*"} | json | level = "ERROR"
-     ```
-   - The log stream displays structured JSON records:
-     ```json
-     {
-       "timestamp": "2026-11-10T14:42:10Z",
-       "level": "ERROR",
-       "message": "Unhandled exception occurred while processing request",
-       "path": "/api/v1/checkout",
-       "error": "Connection timed out to payment-gateway.internal:443",
-       "duration_ms": 2412.5
-     }
-     ```
+**Application** - request rate, error rate, p50/p95/p99 latency, and a Loki logs panel in the same view:
+![Application dashboard](docs/screenshots/01-application.png)
 
-4. **Root Cause Identification & Remediation**:
-   - The error is isolated to an upstream network timeout reaching the payment gateway.
-   - The engineer initiates circuit breaking or falls back to an asynchronous queue, resolving customer impact in minutes.
+**Host** (Node Exporter) - CPU, memory, root disk, network:
+![Host dashboard](docs/screenshots/02-host.png)
+
+**Containers** (cAdvisor) - per-container CPU and memory, and memory as a % of the configured limit:
+![Containers dashboard](docs/screenshots/03-containers.png)
+
+**Alert rules** (4 Prometheus rules loaded; `HighHttpErrorRate` went pending/firing during the spike):
+![Alert rules](docs/screenshots/04-alerts.png)
+
+### Walkthrough
+
+1. **Detect and scope** - on the Application dashboard the *HTTP Error Rate (%)* panel jumps from 0% to ~50% while *Request Rate* shows a new series, `GET /api/v1/does-not-exist`. The request-rate legend is split by `method` and `endpoint`, so the offending endpoint is visible immediately. Latency (p50/p95/p99) stays flat at a few ms, which tells us this is not a slow dependency or saturation problem - requests are failing fast.
+2. **Rule out the platform** - open the Host dashboard (CPU/memory/disk normal) and the Containers dashboard (`care-guide-app` at ~32% of its 128 MiB limit, no OOM pressure). So it is not resource exhaustion.
+3. **Drill into logs without leaving the view** - the *Application Correlated Logs* panel under the metrics is a Loki panel. Filter to the problem window and level:
+   ```logql
+   {container="care-guide-app"} | json | level="WARNING"
+   ```
+   Every line is structured JSON, so fields can be filtered at query time without being indexed labels:
+   ```json
+   {"timestamp": "2026-11-11T13:42:40.981221+00:00", "level": "WARNING", "name": "care_guide_app",
+    "message": "HTTP request completed", "method": "GET", "path": "/api/v1/does-not-exist",
+    "status_code": 404, "duration_ms": 0.25, "client_ip": "172.18.0.1"}
+   ```
+   Narrowing further: `{container="care-guide-app"} | json | status_code >= 500` for server errors, or `| path="/api/v1/does-not-exist"` for one endpoint.
+4. **Conclude** - 404s on a single path from one client IP: a client or deployment calling a route that does not exist (bad config, stale client, or a scanner), not an application fault. For 5xx the same flow applies, and the log line's `error`/`error_type` fields (set by the middleware on unhandled exceptions) point to the failing code path. The alert `HighHttpErrorRate` would have paged on this.
+
+### Log label choices (cardinality)
+Only `container`, `app` and `level` are Loki labels (`service_name` is added by Loki itself). `path`, `status_code`, `duration_ms` and `client_ip` are unbounded, so they stay in the log line and are parsed at query time with `| json`. This keeps the number of streams small.
+
+### What the monitoring containers are allowed to touch
+
+| Container | Access granted | Why |
+|---|---|---|
+| Node Exporter | `/proc`, `/sys`, `/` mounted **read-only**; no `privileged` | Read host CPU/memory/disk/network counters. Note: without `network_mode: host` the network panel reflects the container's namespace, not the physical NICs - acceptable for this demo, use host networking on a real server. |
+| cAdvisor | `privileged: true`; `/`, `/var/run`, `/sys`, `/var/lib/docker`, `/dev/disk` read-only | Read cgroup and Docker layer data to label per-container CPU/memory. This is the most privileged container in the stack; it is on the internal network only and never published to the host. A tighter alternative is `cap_add` + `devices: /dev/kmsg` instead of `privileged`. |
+| Alloy | `/var/run/docker.sock` read-only | Docker service discovery and log tailing. The socket is root-equivalent, so Alloy has no published ports. |
+| Prometheus, Loki, Grafana (other than port 3000) | none beyond their own volumes | Only Grafana is published to the host. |
+
+> **Host requirement:** cAdvisor 0.49 cannot read container layers when Docker uses the containerd image store (Docker 29 default). On such hosts set `{"features": {"containerd-snapshotter": false}}` in `/etc/docker/daemon.json` and restart Docker; otherwise per-container panels stay empty.
+
+### Alert rules and thresholds
+
+| Alert | Condition | `for` | Reasoning |
+|---|---|---|---|
+| `AppInstanceDown` | `up{job="app"} == 0` | 1m | A single failed scrape is noise; 1 minute of failures (12 scrapes) means the app is really down, and it is critical because there is a single instance. |
+| `HighHttpErrorRate` | 4xx+5xx > 5% of requests | 2m | 5% is well above background 404 noise; 2 minutes avoids paging on a short blip but still catches an outage within minutes. It deliberately counts 4xx too, which is why the demo spike fires it. |
+| `HostDiskUsageHigh` | root filesystem > 80% | 5m | 80% leaves time to prune images or resize before 100%. Disk fills slowly, so a 5-minute window loses nothing and ignores transient spikes (e.g. image pulls). |
+| `ContainerMemoryCloseToLimit` | working set > 85% of limit | 3m | The cgroup OOM-kills at 100%; 85% sustained for 3 minutes is an early warning while ignoring short GC/allocation peaks. |
+
+Alerting here is evaluated by Prometheus and visible in Grafana's alert list; routing to Slack/Discord via Alertmanager is listed under improvements.
+
+### Evidence index
+All captured from real runs in this repo:
+- [docs/local-run-evidence.txt](docs/local-run-evidence.txt) - compose services, endpoints, targets, alert rules, Loki queries
+- [docs/test-and-lint-output.txt](docs/test-and-lint-output.txt) - ruff, pytest, coverage
+- [docs/script-and-lint-evidence.txt](docs/script-and-lint-evidence.txt) - `system_health.sh` runs, shellcheck, hadolint, terraform validate
+- [docs/k8s-evidence.txt](docs/k8s-evidence.txt) - pods, HPA, securityContext, read-only filesystem proof
+- [docs/rollout-demo-output.txt](docs/rollout-demo-output.txt) and [docs/zero-downtime-evidence.txt](docs/zero-downtime-evidence.txt) - rollout, rollback, 0 failed requests during update
 
 ---
 
@@ -391,7 +437,7 @@ care-guide-deployment-94486596c-qwwrh    0/1     Terminating   0          5s
 
 ### 1. Minimal Final Container Image: Multi-Stage Alpine vs Distroless
 - **Decision**: Multi-stage build based on `python:3.12.4-alpine3.20` with pinned base image and unprivileged user (`UID 10001`).
-- **Final Image Size**: **198 MB** uncompressed on disk (`docker images`), **~53 MB** compressed (`docker save | gzip`). Most of that is the Python runtime plus `uvicorn[standard]` and `pydantic-core`; a distroless/slim split would shave little, so Alpine was kept.
+- **Final Image Size**: **127 MB** uncompressed on disk (`docker images`, overlay2 driver), **52.5 MB** compressed (`docker save | gzip`). Most of that is the Python runtime plus `uvicorn[standard]` and `pydantic-core`; distroless would shave little for a Python app, so Alpine was kept. (Docker 29's containerd image store reports a larger uncompressed number, ~198 MB, for the same image.)
 - **Trade-off Analysis**:
   - *Distroless*: Offers the absolute smallest attack surface by removing all shells and package managers. However, standard Python applications often encounter edge-case shared library linking hurdles (`musl` vs `glibc`), and debugging running containers requires ephemeral debug containers.
   - *Alpine Multi-Stage*: Stage 1 builds dependencies using GCC and musl-dev; Stage 2 copies only pre-built wheels into a clean Alpine image with no compilers. Retains `wget` for built-in container health checking without adding `curl`, runs non-root, and achieves zero CRITICAL CVEs with a tiny footprint.
