@@ -25,15 +25,6 @@ resource "aws_security_group" "app_sg" {
     cidr_blocks = var.allowed_ingress_cidrs
   }
 
-  # Ingress for Standard HTTP (80)
-  ingress {
-    description = "Allow inbound HTTP on port 80"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ingress_cidrs
-  }
-
   # NOTE: SSH (port 22) is deliberately omitted to prevent public brute force attacks.
   # Shell access and remote commands are managed securely via AWS Systems Manager (SSM) Session Manager.
 

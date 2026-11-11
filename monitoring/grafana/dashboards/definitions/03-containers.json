@@ -55,7 +55,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "(sum(container_memory_working_set_bytes{name!=\"\"}) by (name) / sum(container_spec_memory_limit_bytes{name!=\"\" > 0}) by (name)) * 100",
+          "expr": "(sum(container_memory_working_set_bytes{name!=\"\"}) by (name) / sum(container_spec_memory_limit_bytes{name!=\"\"} > 0) by (name)) * 100",
           "legendFormat": "{{name}} (% of limit)",
           "refId": "A"
         }

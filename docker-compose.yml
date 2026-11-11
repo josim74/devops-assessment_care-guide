@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      secrets:
+        - corp_ca
     image: care-guide-app:local
     container_name: care-guide-app
     ports:
@@ -11,7 +13,6 @@ services:
       - PORT=8080
       - LOG_LEVEL=INFO
       - ENVIRONMENT_NAME=local
-      - APP_VERSION=1.0.0
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
@@ -29,6 +30,12 @@ services:
           memory: 64M
     networks:
       - app-net
+
+# Optional corporate CA for builds behind a TLS-inspecting proxy:
+#   CORP_CA_FILE=/usr/local/share/ca-certificates/<ca>.crt docker compose up -d --build
+secrets:
+  corp_ca:
+    file: ${CORP_CA_FILE:-/dev/null}
 
 networks:
   app-net:

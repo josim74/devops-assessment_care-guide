@@ -9,4 +9,5 @@ data:
   PORT: "8080"
   LOG_LEVEL: "INFO"
   ENVIRONMENT_NAME: "kubernetes-production"
-  APP_VERSION: "1.0.0"
+  # APP_VERSION is intentionally not set here: it is baked into the image (build arg) so the
+  # reported version always matches the running image tag.

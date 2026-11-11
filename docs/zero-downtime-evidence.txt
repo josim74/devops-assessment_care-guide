@@ -1,0 +1,7 @@
+# Zero-downtime check: in-cluster probe hits the Service every ~100 ms while the Deployment rolls 1.0.0 -> 1.1.0
+$ kubectl set image deploy/care-guide-deployment app=care-guide-service:1.1.0
+deployment.apps/care-guide-deployment image updated
+deployment "care-guide-deployment" successfully rolled out
+
+## probe results during rollout
+    168 ok
