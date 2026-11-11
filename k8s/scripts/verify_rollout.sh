@@ -20,6 +20,9 @@ kubectl set image deployment/"${DEPLOYMENT_NAME}" app="${IMAGE_REPO}:${NEW_TAG}"
 echo "==> Monitoring rollout progress..."
 kubectl rollout status deployment/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}"
 
+echo "==> Version served by the running pods:"
+kubectl exec deploy/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}" -- wget -qO- http://127.0.0.1:8080/
+echo
 echo "==> Revision history:"
 kubectl rollout history deployment/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}"
 
@@ -36,5 +39,7 @@ kubectl rollout undo deployment/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}"
 echo "==> Waiting for rollback completion..."
 kubectl rollout status deployment/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}"
 
-echo "==> Rollback complete! Cluster healthy."
+echo "==> Rollback complete! Cluster healthy. Version served after rollback:"
+kubectl exec deploy/"${DEPLOYMENT_NAME}" -n "${NAMESPACE}" -- wget -qO- http://127.0.0.1:8080/
+echo
 kubectl get pods -l app.kubernetes.io/name=care-guide-service -n "${NAMESPACE}"

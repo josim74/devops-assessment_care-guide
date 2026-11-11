@@ -1,0 +1,53 @@
+# Kubernetes evidence (kind) 2026-11-11T14:11:35Z
+
+$ kubectl get nodes,deploy,pods,svc,hpa,ingress
+NAME                            STATUS   ROLES           AGE     VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION     CONTAINER-RUNTIME
+node/care-guide-control-plane   Ready    control-plane   4m33s   v1.31.0   172.20.0.2    <none>        Debian GNU/Linux 12 (bookworm)   7.0.0-42-generic   containerd://1.7.18
+
+NAME                                    READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS   IMAGES                     SELECTOR
+deployment.apps/care-guide-deployment   2/2     2            2           4m28s   app          care-guide-service:1.1.0   app.kubernetes.io/name=care-guide-service
+
+NAME                                         READY   STATUS    RESTARTS   AGE   IP            NODE                       NOMINATED NODE   READINESS GATES
+pod/care-guide-deployment-67f5bc68bc-7dv7w   1/1     Running   0          56s   10.244.0.10   care-guide-control-plane   <none>           <none>
+pod/care-guide-deployment-67f5bc68bc-jff8r   1/1     Running   0          61s   10.244.0.9    care-guide-control-plane   <none>           <none>
+
+NAME                         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE     SELECTOR
+service/care-guide-service   ClusterIP   10.96.111.161   <none>        80/TCP    4m28s   app.kubernetes.io/name=care-guide-service
+service/kubernetes           ClusterIP   10.96.0.1       <none>        443/TCP   4m32s   <none>
+
+NAME                                                 REFERENCE                          TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/care-guide-hpa   Deployment/care-guide-deployment   cpu: 2%/70%   2         5         2          4m28s
+
+NAME                                           CLASS   HOSTS              ADDRESS   PORTS   AGE
+ingress.networking.k8s.io/care-guide-ingress   nginx   care-guide.local             80      4m28s
+
+$ kubectl top pods
+NAME                                     CPU(cores)   MEMORY(bytes)   
+care-guide-deployment-67f5bc68bc-7dv7w   1m           40Mi            
+care-guide-deployment-67f5bc68bc-jff8r   1m           40Mi            
+
+## securityContext / probes / resources of the running pod
+{"fsGroup":10001,"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001,"seccompProfile":{"type":"RuntimeDefault"}}
+{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}
+{"limits":{"cpu":"200m","memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}
+{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0},"type":"RollingUpdate"}
+
+$ kubectl exec care-guide-deployment-67f5bc68bc-7dv7w -- id
+uid=10001(appuser) gid=10001(appgroup) groups=10001(appgroup)
+$ kubectl exec care-guide-deployment-67f5bc68bc-7dv7w -- sh -c 'touch /app/x'   (read-only root filesystem expected to fail)
+touch: /app/x: Read-only file system
+command terminated with exit code 1
+$ kubectl exec care-guide-deployment-67f5bc68bc-7dv7w -- sh -c 'touch /tmp/x && echo /tmp is writable'
+/tmp is writable (emptyDir)
+
+## port-forward
+{"message":"Hello from DevOps Task!","status":"running","version":"1.0.0"}
+{"status":"healthy","version":"1.0.0","environment":"kubernetes-production","timestamp":"2026-11-11T14:11:38.801513+00:00"}
+
+$ kubectl rollout history deploy/care-guide-deployment
+deployment.apps/care-guide-deployment 
+REVISION  CHANGE-CAUSE
+1         <none>
+3         <none>
+4         <none>
+

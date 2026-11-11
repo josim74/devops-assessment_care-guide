@@ -3,34 +3,38 @@ deployment "care-guide-deployment" successfully rolled out
 ==> Step 1: Initiating rolling update to version 1.1.0...
 deployment.apps/care-guide-deployment image updated
 ==> Monitoring rollout progress...
+Waiting for deployment "care-guide-deployment" rollout to finish: 0 out of 2 new replicas have been updated...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
 deployment "care-guide-deployment" successfully rolled out
+==> Version served by the running pods:
+{"message":"Hello from DevOps Task!","status":"running","version":"1.1.0"}
 ==> Revision history:
 deployment.apps/care-guide-deployment 
 REVISION  CHANGE-CAUSE
-1         <none>
-2         <none>
 3         <none>
+5         <none>
+6         <none>
+7         <none>
 
 ==> Step 2: Simulating broken deployment (non-existent image)...
 deployment.apps/care-guide-deployment image updated
 ==> Checking deployment state during failure (existing replicas should remain healthy):
 NAME                                     READY   STATUS         RESTARTS   AGE
-care-guide-deployment-67f5bc68bc-9hll8   1/1     Running        0          16s
-care-guide-deployment-67f5bc68bc-rknjn   1/1     Running        0          11s
-care-guide-deployment-94486596c-qwwrh    0/1     ErrImagePull   0          5s
+care-guide-deployment-67f5bc68bc-lwrdf   1/1     Running        0          15s
+care-guide-deployment-67f5bc68bc-zt4kt   1/1     Running        0          10s
+care-guide-deployment-94486596c-j6z9q    0/1     ErrImagePull   0          5s
 ==> Step 3: Rolling back to previous healthy revision...
 Warning: resource deployments/care-guide-deployment was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
 deployment.apps/care-guide-deployment rolled back
 ==> Waiting for rollback completion...
-Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
 deployment "care-guide-deployment" successfully rolled out
-==> Rollback complete! Cluster healthy.
+==> Rollback complete! Cluster healthy. Version served after rollback:
+{"message":"Hello from DevOps Task!","status":"running","version":"1.1.0"}
 NAME                                     READY   STATUS        RESTARTS   AGE
-care-guide-deployment-67f5bc68bc-9hll8   1/1     Running       0          16s
-care-guide-deployment-67f5bc68bc-rknjn   1/1     Running       0          11s
-care-guide-deployment-94486596c-qwwrh    0/1     Terminating   0          5s
+care-guide-deployment-67f5bc68bc-lwrdf   1/1     Running       0          16s
+care-guide-deployment-67f5bc68bc-zt4kt   1/1     Running       0          11s
+care-guide-deployment-94486596c-j6z9q    0/1     Terminating   0          6s
