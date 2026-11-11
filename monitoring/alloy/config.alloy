@@ -52,10 +52,8 @@ loki.process "parse_json_logs" {
     }
   }
 
-  // 3. Set output log line message
-  stage.output {
-    source = "message"
-  }
+  // The original JSON line is kept intact so path/status_code/duration_ms/error stay
+  // queryable at query time with `| json` (no stage.output override).
 
   forward_to = [loki.write.local_loki.receiver]
 }

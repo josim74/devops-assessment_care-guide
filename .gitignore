@@ -60,6 +60,9 @@ terraform.tfvars
 *.swp
 *.swo
 
+# Local env files holding credentials
+monitoring/.env
+
 # Health logs
 scripts/health_log.txt*
 health_log.txt*

@@ -156,6 +156,12 @@ The observability stack includes **all 6 mandatory components**:
 6. **cAdvisor**: Container runtime CPU, memory, and limit utilization.
 
 ```bash
+# Credentials come from an untracked env file (compose refuses to start without them)
+cp monitoring/.env.example monitoring/.env   # then edit the password
+
+# The app must be up first: it creates the shared 'care-guide-network'
+docker compose up -d --build
+
 # Start all 6 monitoring components alongside the application
 docker compose -f monitoring/docker-compose.monitoring.yml up -d
 ```
@@ -164,8 +170,7 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 
 Only Grafana is exposed to the host machine for network hygiene:
 - **Grafana URL**: [http://localhost:3000](http://localhost:3000)
-- **Default Username**: `admin`
-- **Default Password**: `AdminSecurePass2026!` *(Configurable via `GRAFANA_ADMIN_PASSWORD`)*
+- **Credentials**: the `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` you set in `monitoring/.env` (no default is shipped)
 
 The following 3 pre-provisioned dashboards are automatically loaded under folder **"DevOps Monitoring"**:
 1. **Application Overview & Correlated Logs**: Real-time request rate (req/s), HTTP error rate %, p50/p95/p99 latency histogram percentiles, and an embedded Loki log search panel.
