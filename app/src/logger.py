@@ -36,9 +36,7 @@ def setup_logger(log_level: str = "INFO", environment: str = "development") -> l
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(numeric_level)
 
-    formatter = CustomJsonFormatter(
-        "%(timestamp)s %(level)s %(name)s %(message)s"
-    )
+    formatter = CustomJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
