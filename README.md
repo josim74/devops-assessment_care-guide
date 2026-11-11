@@ -306,34 +306,45 @@ Execute the automated verification script:
 
 #### Step-by-Step Commands & Real Output:
 
+Captured from a real run on a local kind cluster (also saved in [docs/rollout-demo-output.txt](docs/rollout-demo-output.txt)):
+
 ```text
 ==> Current deployment status in namespace 'default':
 deployment "care-guide-deployment" successfully rolled out
-
 ==> Step 1: Initiating rolling update to version 1.1.0...
 deployment.apps/care-guide-deployment image updated
-
 ==> Monitoring rollout progress...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "care-guide-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
 Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
 deployment "care-guide-deployment" successfully rolled out
+==> Revision history:
+deployment.apps/care-guide-deployment 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+3         <none>
 
 ==> Step 2: Simulating broken deployment (non-existent image)...
 deployment.apps/care-guide-deployment image updated
-
-==> Checking deployment state during failure (existing replicas remain healthy and serve traffic):
-NAME                                     READY   STATUS             RESTARTS   AGE
-care-guide-deployment-7f9b88cfb4-82x9z   1/1     Running            0          4m
-care-guide-deployment-7f9b88cfb4-kpx21   1/1     Running            0          4m
-care-guide-deployment-554dd89db8-m912p   0/1     ImagePullBackOff   0          25s
-
+==> Checking deployment state during failure (existing replicas should remain healthy):
+NAME                                     READY   STATUS         RESTARTS   AGE
+care-guide-deployment-67f5bc68bc-9hll8   1/1     Running        0          16s
+care-guide-deployment-67f5bc68bc-rknjn   1/1     Running        0          11s
+care-guide-deployment-94486596c-qwwrh    0/1     ErrImagePull   0          5s
 ==> Step 3: Rolling back to previous healthy revision...
+Warning: resource deployments/care-guide-deployment was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
 deployment.apps/care-guide-deployment rolled back
-
+==> Waiting for rollback completion...
+Waiting for deployment "care-guide-deployment" rollout to finish: 1 old replicas are pending termination...
+deployment "care-guide-deployment" successfully rolled out
 ==> Rollback complete! Cluster healthy.
-NAME                                     READY   STATUS    RESTARTS   AGE
-care-guide-deployment-7f9b88cfb4-82x9z   1/1     Running   0          5m
-care-guide-deployment-7f9b88cfb4-kpx21   1/1     Running   0          5m
+NAME                                     READY   STATUS        RESTARTS   AGE
+care-guide-deployment-67f5bc68bc-9hll8   1/1     Running       0          16s
+care-guide-deployment-67f5bc68bc-rknjn   1/1     Running       0          11s
+care-guide-deployment-94486596c-qwwrh    0/1     Terminating   0          5s
 ```
 
 ---
@@ -380,7 +391,7 @@ care-guide-deployment-7f9b88cfb4-kpx21   1/1     Running   0          5m
 
 ### 1. Minimal Final Container Image: Multi-Stage Alpine vs Distroless
 - **Decision**: Multi-stage build based on `python:3.12.4-alpine3.20` with pinned base image and unprivileged user (`UID 10001`).
-- **Final Image Size**: **$62.4\text{ MB}$**.
+- **Final Image Size**: **198 MB** uncompressed on disk (`docker images`), **~53 MB** compressed (`docker save | gzip`). Most of that is the Python runtime plus `uvicorn[standard]` and `pydantic-core`; a distroless/slim split would shave little, so Alpine was kept.
 - **Trade-off Analysis**:
   - *Distroless*: Offers the absolute smallest attack surface by removing all shells and package managers. However, standard Python applications often encounter edge-case shared library linking hurdles (`musl` vs `glibc`), and debugging running containers requires ephemeral debug containers.
   - *Alpine Multi-Stage*: Stage 1 builds dependencies using GCC and musl-dev; Stage 2 copies only pre-built wheels into a clean Alpine image with no compilers. Retains `wget` for built-in container health checking without adding `curl`, runs non-root, and achieves zero CRITICAL CVEs with a tiny footprint.

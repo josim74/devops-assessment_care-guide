@@ -6,20 +6,15 @@ FROM python:3.12.4-alpine3.20 AS builder
 
 WORKDIR /build
 
-# Install build dependencies if needed for compiling packages
-# Builder stage is discarded; pinning alpine package revisions here is brittle (they are
-# removed from the mirror) and does not affect the shipped image.
-# hadolint ignore=DL3018
-RUN apk add --no-cache --virtual .build-deps \
-    gcc \
-    musl-dev \
-    linux-headers \
-    libffi-dev
-
-# Install dependencies into a wheels cache
+# All pinned dependencies publish musllinux wheels, so no compiler toolchain is needed.
+# --only-binary makes the build fail loudly instead of silently compiling if that ever changes.
 COPY app/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip==24.1.2 && \
-    pip wheel --no-cache-dir --wheel-dir=/build/wheels -r requirements.txt
+# Optional corporate TLS-inspection CA (never baked into the image: it only exists in this stage's
+# build mount). Usage: docker build --secret id=corp_ca,src=/path/to/ca.crt ...
+RUN --mount=type=secret,id=corp_ca,required=false \
+    if [ -s /run/secrets/corp_ca ]; then export PIP_CERT=/run/secrets/corp_ca; fi && \
+    pip install --no-cache-dir --upgrade pip==24.1.2 && \
+    pip wheel --no-cache-dir --only-binary=:all: --wheel-dir=/build/wheels -r requirements.txt
 
 # ------------------------------------------------------------------------------
 # Stage 2: Final minimal production image

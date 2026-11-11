@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      secrets:
+        - corp_ca
     image: care-guide-app:local
     container_name: care-guide-app
     ports:
@@ -29,6 +31,12 @@ services:
           memory: 64M
     networks:
       - app-net
+
+# Optional corporate CA for builds behind a TLS-inspecting proxy:
+#   CORP_CA_FILE=/usr/local/share/ca-certificates/<ca>.crt docker compose up -d --build
+secrets:
+  corp_ca:
+    file: ${CORP_CA_FILE:-/dev/null}
 
 networks:
   app-net:
