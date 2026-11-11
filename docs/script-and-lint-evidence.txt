@@ -1,0 +1,85 @@
+$ ./scripts/system_health.sh --help
+Usage: system_health.sh [OPTIONS]
+
+Production server health monitoring script.
+
+Options:
+  --cpu PERCENT      CPU usage warning threshold (default: 90%)
+  --mem PERCENT      Memory usage warning threshold (default: 85%)
+  --disk PERCENT     Disk usage warning threshold for any mounted fs (default: 80%)
+  --log PATH         Custom log file path (default: /home/josim/workspace/temp/devops-assessment_care-guide/scripts/health_log.txt)
+  --json             Output health report in structured JSON format
+  -h, --help         Show this help message and exit
+
+Exit Codes:
+  0 = Healthy (All system metrics below warning thresholds)
+  1 = Warning (One or more metrics exceeded warning thresholds)
+  2 = Critical / Error (Critical thresholds exceeded >= 95% or command failure)
+
+$ ./scripts/system_health.sh --log /tmp/hl_demo.txt   (default thresholds)
+======================================================================
+[2026-11-11T13:43:19Z] System Health Report (Status: HEALTHY)
+======================================================================
+CPU Usage:       1% (Threshold: 90%)
+Memory Usage:    21% (Threshold: 85%)
+Max Disk Usage:  19% (Threshold: 80%)
+Load Average:    0.74, 0.80, 0.86
+
+Disk Mounts:
+  - /: 3%
+  - /sys/firmware/efi/efivars: 19%
+  - /boot/efi: 1%
+Top 5 Processes by Memory:
+    PID USER     %MEM COMMAND
+   5238 josim     1.5 chrome
+ 247287 josim     1.2 code
+   5055 josim     1.1 chrome
+   1921 josim     1.1 gnome-shell
+   9445 josim     1.0 chrome
+======================================================================
+
+exit code: 0
+
+$ ./scripts/system_health.sh --cpu 99 --mem 5 --disk 1 --json   (forced WARNING)
+{
+  "timestamp": "2026-11-11T13:43:20Z",
+  "status": "unhealthy",
+  "exit_code": 1,
+  "cpu_usage_pct": 1,
+  "memory_usage_pct": 21,
+  "max_disk_usage_pct": 19,
+  "load_average": "0.74, 0.80, 0.86",
+  "warnings": [
+    "WARNING: Memory usage is at 21% (Threshold: 5%)",
+    "WARNING: Max disk usage is at 19% (Threshold: 1%)"
+  ],
+  "top_processes_by_mem": [
+    {
+      "pid": "5238",
+      "user": "josim",
+      "mem_pct": "1.4",
+      "cmd": "chrome"
+    },
+    {
+      "pid": "247287",
+      "user": "josim",
+exit code: 1
+
+$ ./scripts/system_health.sh --mem 150   (invalid input)
+Error: Threshold must be an integer between 1 and 100 (got: 150)
+exit code: 2
+
+## Log rotation: 10 MB cap
+-rw-rw-r-- 1 josim josim      705 Nov 11 19:43 /tmp/hl_demo.txt
+-rw-rw-r-- 1 josim josim 11000000 Nov 11 19:43 /tmp/hl_demo.txt.1
+
+## shellcheck (warning severity)
+shellcheck: clean
+
+## hadolint
+hadolint: clean
+
+## terraform fmt/validate
+fmt: ok
+Success! The configuration is valid.
+

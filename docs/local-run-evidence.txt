@@ -1,0 +1,74 @@
+# Local run evidence (2026-11-11T13:43:09Z)
+
+## docker compose ps (app)
+NAME             IMAGE                  COMMAND                  SERVICE   CREATED          STATUS                    PORTS
+care-guide-app   care-guide-app:local   "python3 -m app.src.…"   app       28 minutes ago   Up 28 minutes (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+
+## docker compose ps (monitoring)
+NAME            IMAGE                              STATUS                    PORTS
+alloy           grafana/alloy:v1.2.1               Up 26 minutes             
+cadvisor        gcr.io/cadvisor/cadvisor:v0.52.1   Up 20 minutes (healthy)   8080/tcp
+grafana         grafana/grafana:11.1.0             Up 2 minutes              0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+loki            grafana/loki:3.0.0                 Up 26 minutes             3100/tcp
+node-exporter   prom/node-exporter:v1.8.1          Up 26 minutes             9100/tcp
+prometheus      prom/prometheus:v2.53.0            Up 26 minutes             9090/tcp
+
+## App endpoints
+$ curl -s localhost:8080/
+{"message":"Hello from DevOps Task!","status":"running","version":"1.0.0"}
+$ curl -s localhost:8080/health
+{"status":"healthy","version":"1.0.0","environment":"local","timestamp":"2026-11-11T13:43:09.418931+00:00"}
+$ curl -s localhost:8080/metrics | grep -E '^(http_requests_total|http_request_errors_total|http_request_duration_seconds_count)'
+http_requests_total{endpoint="/health",method="GET",status_code="200"} 748.0
+http_requests_total{endpoint="/",method="GET",status_code="200"} 1725.0
+http_requests_total{endpoint="/metrics",method="GET",status_code="200"} 319.0
+http_requests_total{endpoint="/nope",method="GET",status_code="404"} 1.0
+http_requests_total{endpoint="/api/v1/does-not-exist",method="GET",status_code="404"} 1117.0
+http_request_errors_total{endpoint="/nope",method="GET",status_code="404"} 1.0
+http_request_errors_total{endpoint="/api/v1/does-not-exist",method="GET",status_code="404"} 1117.0
+http_request_duration_seconds_count{endpoint="/health",method="GET"} 748.0
+http_request_duration_seconds_count{endpoint="/",method="GET"} 1725.0
+http_request_duration_seconds_count{endpoint="/metrics",method="GET"} 319.0
+http_request_duration_seconds_count{endpoint="/nope",method="GET"} 1.0
+http_request_duration_seconds_count{endpoint="/api/v1/does-not-exist",method="GET"} 1117.0
+
+## Container hardening
+uid=10001(appuser) gid=10001(appgroup) groups=10001(appgroup)
+HealthStatus=healthy Memory=134217728 NanoCpus=500000000 RestartPolicy=unless-stopped
+
+## Only Grafana published to host
+grafana	0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+care-guide-control-plane	127.0.0.1:32837->6443/tcp
+cadvisor	8080/tcp
+alloy	
+prometheus	9090/tcp
+loki	3100/tcp
+node-exporter	9100/tcp
+care-guide-app	0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+
+## Prometheus targets
+app http://app:8080/metrics up
+cadvisor http://cadvisor:8080/metrics up
+node-exporter http://node-exporter:9100/metrics up
+
+## Prometheus alert rules
+AppInstanceDown | for= 60 | state= inactive | health= ok
+HighHttpErrorRate | for= 120 | state= firing | health= ok
+HostDiskUsageHigh | for= 300 | state= inactive | health= ok
+ContainerMemoryCloseToLimit | for= 180 | state= inactive | health= ok
+
+## Prometheus retention flag
+retention.time = 15d
+
+## Loki label set + sample error-path query
+{"status":"success","data":["app","container","level","service_name"]}
+
+{"timestamp": "2026-11-11T13:42:40.981221+00:00", "level": "WARNING", "name": "care_guide_app", "message": "HTTP request completed", "taskName": "Task-19488", "method": "GET", "path": "/api/v1/does-not-exist", "status_code": 404, "duration_ms": 0.25, "client_ip": "172.18.0.1"}
+{"timestamp": "2026-11-11T13:42:40.874427+00:00", "level": "WARNING", "name": "care_guide_app", "message": "HTTP request completed", "taskName": "Task-19478", "method": "GET", "path": "/api/v1/does-not-exist", "status_code": 404, "duration_ms": 0.16, "client_ip": "172.18.0.1"}
+
+## Grafana provisioned datasources / dashboards
+Loki loki True
+Prometheus prometheus True
+Application Overview & Correlated Logs -> /d/app-overview/application-overview-and-correlated-logs
+Container Resource Metrics (cAdvisor) -> /d/container-metrics/container-resource-metrics-cadvisor
+Host Infrastructure Metrics -> /d/host-metrics/host-infrastructure-metrics

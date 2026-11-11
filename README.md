@@ -195,7 +195,7 @@ pip install -r app/requirements-dev.txt
 ruff check .
 ruff format --check .
 
-# Run pytest with code coverage (Target >= 80%, Current: ~91%)
+# Run pytest with code coverage (Target >= 80%, Current: ~90%)
 pytest
 ```
 
