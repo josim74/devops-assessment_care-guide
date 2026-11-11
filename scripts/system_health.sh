@@ -142,7 +142,9 @@ done < <(df -kP | awk 'NR>1 && $1 !~ /^(tmpfs|udev|none|devfs|overlay)$/ {print 
 LOAD_AVG=$(uptime | awk -F'load average[s]?: ' '{print $2}' | sed 's/^[ \t]*//')
 
 # Top 5 processes by memory consumption (PID, USER, %MEM, COMMAND)
-TOP_5_MEM_RAW=$(ps -eo pid,user,%mem,comm -r 2>/dev/null || ps -eo pid,user,%mem,comm --sort=-%mem)
+# GNU ps: --sort=-%mem; BSD/macOS ps: -m (sort by memory). Note: BSD "-r" sorts by CPU and
+# on Linux restricts output to running processes, so it must not be used here.
+TOP_5_MEM_RAW=$(ps -eo pid,user,%mem,comm --sort=-%mem 2>/dev/null || ps -Ao pid,user,%mem,comm -m)
 TOP_5_MEM=$(sed -n '1,6p' <<< "$TOP_5_MEM_RAW")
 
 # ------------------------------------------------------------------------------

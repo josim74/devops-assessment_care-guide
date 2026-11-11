@@ -239,9 +239,10 @@ The Terraform code provisions an AWS Free Tier EC2 instance, least-privilege IAM
 ```bash
 cd terraform
 
-# Format and initialize Terraform
+# Format and initialize Terraform (one state file per environment; edit bucket/table names in
+# environments/<env>.backend.hcl first). For offline validation use: terraform init -backend=false
 terraform fmt -check
-terraform init -backend=false
+terraform init -reconfigure -backend-config=environments/staging.backend.hcl
 
 # Validate configuration
 terraform validate
@@ -439,8 +440,8 @@ If `/health` fails after 10 consecutive checks (30 seconds):
 - **Container Isolation & Non-Root Execution**:
   - The container runs as unprivileged user `appuser` (`UID 10001:10001`).
   - Kubernetes enforces `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, and drops all Linux capabilities (`capabilities: drop: ["ALL"]`).
-- **Zero Public Port Exposure**:
-  - SSH (port 22) is completely disabled in the security group. Remote operations are conducted through AWS SSM Session Manager.
+- **Minimal Network Exposure**:
+  - SSH (port 22) is completely disabled in the security group; only the app port (8080) is open, restricted by `allowed_ingress_cidrs` (tighten from the `0.0.0.0/0` default). Remote operations are conducted through AWS SSM Session Manager.
   - In the monitoring stack, Prometheus, Loki, Alloy, cAdvisor, and Node Exporter are isolated on an internal Docker bridge network; only Grafana is reachable via host port 3000.
 - **Vulnerability Scanning**:
   - Trivy executes on every pull request, blocking images with unpatched CRITICAL vulnerabilities before they reach production.
